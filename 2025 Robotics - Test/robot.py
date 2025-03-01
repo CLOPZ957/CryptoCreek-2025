@@ -10,13 +10,9 @@ import wpilib
 import wpilib.drive
 import rev
 import time
-from pathplannerlib.auto import AutoBuilder
-from pathplannerlib.path import PathPlannerPath
-from pathplannerlib.auto import PathPlannerAuto
-from pathplannerlib.auto import AutoBuilder
-from pathplannerlib.controller import PPLTVController
-from pathplannerlib.config import RobotConfig
 from wpilib import DriverStation
+import wpilib
+from wpilib.cameraserver import CameraServer
 
 
     
@@ -28,37 +24,7 @@ kLB = 5 #LB Button
 kRB = 6 #RB Button
 kBack = 7 #Back Button
 kStart = 8 #Start Button
-kRT = 9 #Right Trigger Button
     
-class DriveSubsystem(Subsystem):
-    def __init__(self):
-        
-        
-        config = RobotConfig.fromGUISettings()
-        
-        # Configure the AutoBuilder last
-        AutoBuilder.configure(
-            self.getPose, # Robot pose supplier
-            self.resetPose, # Method to reset odometry (will be called if your auto has a starting pose)
-            self.getRobotRelativeSpeeds, # ChassisSpeeds supplier. MUST BE ROBOT RELATIVE
-            lambda speeds, feedforwards: self.driveRobotRelative(speeds), # Method that will drive the robot given ROBOT RELATIVE ChassisSpeeds. Also outputs individual module feedforwards
-            PPLTVController(0.02), # PPLTVController is the built in path following controller for differential drive trains
-            config, # The robot configuration
-            self.shouldFlipPath, # Supplier to control path flipping based on alliance color
-            self # Reference to this subsystem to set requirements
-        )
-
-    def shouldFlipPath():
-        # Boolean supplier that controls when the path will be mirrored for the red alliance
-        # This will flip the path being followed to the red side of the field.
-        # THE ORIGIN WILL REMAIN ON THE BLUE SIDE
-        return DriverStation.getAlliance() == DriverStation.Alliance.kRed
-class RobotContainer:
-    def getAutonomousCommand():
-        # This method loads the auto when it is called, however, it is recommended
-        # to first load your paths/autos when code starts, then return the
-        # pre-loaded auto/path
-        return PathPlannerAuto('Test Auto')    
 
 class MyRobot(wpilib.TimedRobot):
     """Main robot class"""
@@ -67,25 +33,34 @@ class MyRobot(wpilib.TimedRobot):
         """Robot-wide initialization code should go here"""
 
         self.joystick = wpilib.XboxController(0)
+        self.joystick1 = wpilib.XboxController(1)
         
-        self.lf_motor = wpilib.PWMSparkMax(4) 
-        self.lr_motor = wpilib.PWMSparkMax(3)
-        self.rf_motor = wpilib.PWMSparkMax(9)
-        self.rr_motor = wpilib.PWMSparkMax(2)
+        self.lf_motor = rev.SparkMax(9, rev.SparkLowLevel.MotorType.kBrushless) 
+        self.lr_motor = rev.SparkMax(2, rev.SparkLowLevel.MotorType.kBrushless)
+        self.rf_motor = rev.SparkMax(4, rev.SparkLowLevel.MotorType.kBrushless)
+        self.rr_motor = rev.SparkMax(3, rev.SparkLowLevel.MotorType.kBrushless)
 
-        l_motor = wpilib.MotorControllerGroup(self.lf_motor, self.lr_motor)
-        r_motor = wpilib.MotorControllerGroup(self.rf_motor, self.rr_motor)
+        self.l_motor = wpilib.MotorControllerGroup(self.lf_motor, self.lr_motor)
+        self.r_motor = wpilib.MotorControllerGroup(self.rf_motor, self.rr_motor)
 
-        l_motor.setInverted(True)
+        self.l_motor.setInverted(True)
         
 
-        self.drive = wpilib.drive.DifferentialDrive(l_motor, r_motor)
+        self.drive = wpilib.drive.DifferentialDrive(self.l_motor, self.r_motor)
     
-        algae_arm = rev.SparkMax()
-        algae_wheels = rev.SparkMax()
-        elevator = rev.SparkMax()
-        EF_rightmotor = rev.SparkMax()
-        EF_leftmotor = rev.SparkMax()
+        #Algae
+        self.algae_arm = rev.SparkMax(7, rev.SparkLowLevel.MotorType.kBrushless)
+        self.algae_wheels = rev.SparkMax(8, rev.SparkLowLevel.MotorType.kBrushless)
+       
+        #Elevator
+        self.elevator_left = rev.SparkMax(6, rev.SparkLowLevel.MotorType.kBrushless)
+        self.elevator_right = rev.SparkMax(5, rev.SparkLowLevel.MotorType.kBrushless)
+        elevator_motors = wpilib.MotorControllerGroup(self.elevator_left, self.elevator_right)
+
+
+        #End Effector
+        self.EF_rightmotor = rev.SparkMax(11, rev.SparkLowLevel.MotorType.kBrushless)
+        self.EF_leftmotor = rev.SparkMax(10, rev.SparkLowLevel.MotorType.kBrushless)
 
 
     def autonomousInit(self):
@@ -95,48 +70,95 @@ class MyRobot(wpilib.TimedRobot):
 
     def teleopPeriodic(self):
         """Called when operation control mode is enabled"""
-         #TEST THIS LATER (MOVEMENT ADJUSTMENTS)
-        #drive motors
-        rightTrigger = self.joystick.getRightTriggerAxis()    #New (test) code
-        #RightY = self.joystick.getRightY()    #original code
-        LeftX = self.joystick.getLeftX()
+        #Algae Arm
+        if (self.joystick.getRawButton(kLB)):
+            self.algae_arm.set(-0.25)
+        elif (self.joystick.getRawButtonReleased(kLB)):
+            self.algae_arm.set(0)
+
+        if (self.joystick.getRawButton(kRB)):
+            self.algae_arm.set(0.25)
+        elif (self.joystick.getRawButtonReleased(kRB)):
+            self.algae_arm.set(0)
         
-
-        RightX = self.joystick.getRightX()
-        leftTrigger = self.joystick.getLeftTriggerAxis()
-        # print(f"RightY: {RightY} - LeftY: {Left-Y}")
-        
-        if(rightTrigger > 0):
-            rightTrigger = (rightTrigger**-4)*-1
-        else:
-            rightTrigger = (rightTrigger**4)
-
-        if(leftTrigger > 0):
-            rightTrigger = (rightTrigger**0)
-        else:
-            rightTrigger = (rightTrigger**4)*-1
-
-        if(rightTrigger == 0):
-            leftTrigger = (leftTrigger**4)*-1
-        else:
-            leftTrigger = (leftTrigger**4)*1
-        
-        
-
-
-        rightTrigger = rightTrigger *1.5        
-        leftTrigger = leftTrigger *.9  
-
-
-        self.drive.arcadeDrive(rightTrigger, LeftX, leftTrigger)
-    
-        #Algae Movement
-        # if (self.joystick.getRawButton())
+        if (self.joystick.getRawButton(kX)):
+            self.algae_wheels.set(-0.25)
+        elif (self.joystick.getRawButtonReleased(kX)):
+            self.algae_wheels.set(0)
             
         
-        #self.drive.arcadeDrive(rightTrigger, LeftX, leftTrigger) # new arcade input
+        if (self.joystick.getRawButton(kB)):
+            self.algae_wheels.set(0.25)
+        elif (self.joystick.getRawButtonReleased(kB)):
+            self.algae_wheels.set(0)
 
-    def disabledInit(self) -> None:
+
+
+        #Elevator
+        if (self.joystick1.getPOV() == 0):
+            self.elevator_right.set(0.2)
+            self.elevator_left.set(-0.2)
+        elif (self.joystick1.getPOV() == 180):
+            self.elevator_right.set(-0.2)
+            self.elevator_left.set(0.2)
+        else:
+            self.elevator_left.set(0)
+            self.elevator_right.set(0)
+
+        #End Effector
+        if (self.joystick1.getRawButton(kY)):
+            self.EF_leftmotor.set(-0.7)
+            self.EF_rightmotor.set(0.9)
+        elif (self.joystick1.getRawButtonReleased(kY)):
+            self.EF_leftmotor.set(0)
+            self.EF_rightmotor.set(0)
+
+        if (self.joystick1.getRawButton(kA)):
+            self.EF_leftmotor.set(-0.5)
+            self.EF_rightmotor.set(0.5)
+        elif (self.joystick1.getRawButtonReleased(kA)):
+            self.EF_leftmotor.set(0)
+            self.EF_rightmotor.set(0)
+
+        #drive motor
+        # print(f"RightY: {RightY} - LeftY: {LeftY}")
+
+        #exponential movement
+
+        """Called when operation control mode is enabled"""
+
+    # Exponential movement adjustment
+        rightTrigger = self.joystick.getRightTriggerAxis()  
+        leftTrigger = self.joystick.getLeftTriggerAxis()   
+        LeftX = self.joystick.getLeftX()                     
+        RightX = self.joystick.getRightX()
+        print (LeftX)       
+
+        if(rightTrigger > 0):
+            rightTrigger = (rightTrigger**2)*-0.5
+        else:
+            rightTrigger = (rightTrigger**1)*0
+        
+        if(rightTrigger == 0 and leftTrigger > 0):
+            leftTrigger = (leftTrigger**2)*.5
+        else:
+            leftTrigger = (leftTrigger**1)*0
+
+        if (LeftX < 0):
+            LeftX = (LeftX**4)*-.5
+        elif (LeftX > 0):
+            LeftX = (LeftX**4)*.5
+        else:
+            LeftX = (LeftX**4)
+
+        #rightTrigger = rightTrigger *-0.5      
+        #leftTrigger = leftTrigger *1.2
+
+
+        self.drive.arcadeDrive(rightTrigger or leftTrigger, LeftX)
+
+    
+def disabledInit(self) -> None:
         # This just makes sure that our simulation code knows that the motor is off
         self.lf_motor.set(0)
         self.lr_motor.set(0)
